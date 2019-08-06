@@ -1,0 +1,79 @@
+---
+title: "Assignment Practical Machine Learning"
+author: "R. Bakx"
+date: "`r Sys.Date()`"
+output: 
+     html_document:
+         code_folding: show
+         self_contained: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+library(ggplot2)
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(kableExtra)
+```
+
+First we load the training and testing data:
+
+```{r load_data}
+testing<-read.csv('pml-testing.csv')
+training<-read.csv('pml-training.csv')
+```
+
+When we look at the training data set we see that a few variables include a lot of missing values, which will not work for our prediction models. I will drop the columns that have missing or infinite values. Also, we will ignore the X, user_name, timestamp and window variables as these variables will most likely not help predict how well a participant executed a particular training. 
+
+My reasoning is that X is simply the row number and one's name does not indicate one's skill in a particular excercise. I also thought that the time at which an excersice was performed or how long it took does not indicate the correctness of the exercise. Therefore I left these variables out of the models. 
+
+Lastly, we will split the training set obtained from Coursera into a new training set and a validation set. We will use the new training set to train models and the validation set to get a sense of the out-of-sample error.
+
+```{r clean_data}
+#remove columns with missing values or factors, except the 'classe' column
+classe<-training$classe
+training<-cbind(training[,!sapply(training[1,],is.factor) & complete.cases(t(training))],classe)
+testing<-testing[,!sapply(testing[1,],is.factor) & complete.cases(t(testing))]
+
+#also remove the 'X', timestamp and window columns, since these do not contribute to the model
+training<-training[,-c(1:4)]
+testing<-testing[,-c(1:4)]
+
+#select training data and validation data
+inTrain<-createDataPartition(y=training$classe, p=0.7, list=FALSE)
+validating<-training[-inTrain,]
+training<-training[inTrain,]
+
+```
+
+Now that we have cleaned the data, we will fit a couple of models to the training data; we will use a Random Forest and a Linear Discriminant Analysis (method 'lda'). After we've fitted these models we will calculate their accuracy in the validation set to get a sense of the out-of-sample error.
+
+```{r fit_models}
+set.seed(1234)
+
+#fit the models
+rf.model<-randomForest(classe~., data=training)
+lda.model<-train(classe~., method='lda', data=training)
+
+#calculate confusion matrices
+lda.cfm<-confusionMatrix(validating$classe, predict(lda.model,validating))
+rf.cfm<-confusionMatrix(validating$classe, predict(rf.model,validating))
+
+results<-tibble(Model=c('lda','rf'),Method=c('Linear Discriminant Analysis', 'Random forest'), Accuracy=c(lda.cfm$overall[1],rf.cfm$overall[1]))
+
+kable(results) %>%  kable_styling(bootstrap_options = "striped")
+
+```
+
+The lda-model has an accuracy of about 0.7 in the validation set. The rf-model is alot more accurate, the accuracy in the validation set is 0.99. Since we did not include the validation set in the training process we expect the out-of-sample accuracy to be about the same. Therefore we will use the random forest model for the predictions in the test set. We get the following results.
+
+```{r predict_classes}
+predictions<-predict(rf.model, testing)
+
+test_results<-tibble(Number=names(predictions), Pred_classe=predictions)
+
+kable(test_results) %>%  kable_styling(bootstrap_options = "striped")
+
+```
+
