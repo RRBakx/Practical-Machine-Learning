@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<meta charset="utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="generator" content="pandoc" />
+
+
+<meta name="author" content="R. Bakx" />
+
+<meta name="date" content="2019-08-06" />
+
+<title>Assignment Practical Machine Learning</title>
+
+<script src="assignment_files/jquery-1.11.3/jquery.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="assignment_files/bootstrap-3.3.5/css/bootstrap.min.css" rel="stylesheet" />
+<script src="assignment_files/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="assignment_files/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="assignment_files/bootstrap-3.3.5/shim/respond.min.js"></script>
+<script src="assignment_files/navigation-1.1/tabsets.js"></script>
+<script src="assignment_files/navigation-1.1/codefolding.js"></script>
+<link href="assignment_files/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="assignment_files/highlightjs-9.12.0/highlight.js"></script>
+<script src="assignment_files/kePrint-0.0.1/kePrint.js"></script>
+
+<style type="text/css">code{white-space: pre;}</style>
+<style type="text/css">
+  pre:not([class]) {
+    background-color: white;
+  }
+</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+<style type="text/css">
+h1 {
+  font-size: 34px;
+}
+h1.title {
+  font-size: 38px;
+}
+h2 {
+  font-size: 30px;
+}
+h3 {
+  font-size: 24px;
+}
+h4 {
+  font-size: 18px;
+}
+h5 {
+  font-size: 16px;
+}
+h6 {
+  font-size: 12px;
+}
+.table th:not([align]) {
+  text-align: left;
+}
+</style>
+
+
+</head>
+
+<body>
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+code {
+  color: inherit;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+img {
+  max-width:100%;
+  height: auto;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+</style>
+
+
+
+<div class="container-fluid main-container">
+
+<!-- tabsets -->
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+</script>
+
+<!-- code folding -->
+<style type="text/css">
+.code-folding-btn { margin-bottom: 4px; }
+</style>
+<script>
+$(document).ready(function () {
+  window.initializeCodeFolding("show" === "show");
+});
+</script>
+
+
+
+
+
+
+<div class="fluid-row" id="header">
+
+<div class="btn-group pull-right">
+<button type="button" class="btn btn-default btn-xs dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><span>Code</span> <span class="caret"></span></button>
+<ul class="dropdown-menu" style="min-width: 50px;">
+<li><a id="rmd-show-all-code" href="#">Show All Code</a></li>
+<li><a id="rmd-hide-all-code" href="#">Hide All Code</a></li>
+</ul>
+</div>
+
+
+
+<h1 class="title toc-ignore">Assignment Practical Machine Learning</h1>
+<h4 class="author"><em>R. Bakx</em></h4>
+<h4 class="date"><em>2019-08-06</em></h4>
+
+</div>
+
+
+<p>First we load the training and testing data:</p>
+<pre class="r"><code>testing&lt;-read.csv(&#39;pml-testing.csv&#39;)
+training&lt;-read.csv(&#39;pml-training.csv&#39;)</code></pre>
+<p>When we look at the training data set we see that a few variables include a lot of missing values, which will not work for our prediction models. I will drop the columns that have missing or infinite values. Also, we will ignore the X, user_name, timestamp and window variables as these variables will most likely not help predict how well a participant executed a particular training.</p>
+<p>My reasoning is that X is simply the row number and one’s name does not indicate one’s skill in a particular excercise. I also thought that the time at which an excersice was performed or how long it took does not indicate the correctness of the exercise. Therefore I left these variables out of the models.</p>
+<p>Lastly, we will split the training set obtained from Coursera into a new training set and a validation set. We will use the new training set to train models and the validation set to get a sense of the out-of-sample error.</p>
+<pre class="r"><code>#remove columns with missing values or factors, except the &#39;classe&#39; column
+classe&lt;-training$classe
+training&lt;-cbind(training[,!sapply(training[1,],is.factor) &amp; complete.cases(t(training))],classe)
+testing&lt;-testing[,!sapply(testing[1,],is.factor) &amp; complete.cases(t(testing))]
+
+#also remove the &#39;X&#39;, timestamp and window columns, since these do not contribute to the model
+training&lt;-training[,-c(1:4)]
+testing&lt;-testing[,-c(1:4)]
+
+#select training data and validation data
+inTrain&lt;-createDataPartition(y=training$classe, p=0.7, list=FALSE)
+validating&lt;-training[-inTrain,]
+training&lt;-training[inTrain,]</code></pre>
+<p>Now that we have cleaned the data, we will fit a couple of models to the training data; we will use a Random Forest and a Linear Discriminant Analysis (method ‘lda’). After we’ve fitted these models we will calculate their accuracy in the validation set to get a sense of the out-of-sample error.</p>
+<pre class="r"><code>set.seed(1234)
+
+#fit the models
+rf.model&lt;-randomForest(classe~., data=training)
+lda.model&lt;-train(classe~., method=&#39;lda&#39;, data=training)
+
+#calculate confusion matrices
+lda.cfm&lt;-confusionMatrix(validating$classe, predict(lda.model,validating))
+rf.cfm&lt;-confusionMatrix(validating$classe, predict(rf.model,validating))
+
+results&lt;-tibble(Model=c(&#39;lda&#39;,&#39;rf&#39;),Method=c(&#39;Linear Discriminant Analysis&#39;, &#39;Random forest&#39;), Accuracy=c(lda.cfm$overall[1],rf.cfm$overall[1]))
+
+kable(results) %&gt;%  kable_styling(bootstrap_options = &quot;striped&quot;)</code></pre>
+<table class="table table-striped" style="margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:left;">
+Model
+</th>
+<th style="text-align:left;">
+Method
+</th>
+<th style="text-align:right;">
+Accuracy
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+lda
+</td>
+<td style="text-align:left;">
+Linear Discriminant Analysis
+</td>
+<td style="text-align:right;">
+0.7079014
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+rf
+</td>
+<td style="text-align:left;">
+Random forest
+</td>
+<td style="text-align:right;">
+0.9942226
+</td>
+</tr>
+</tbody>
+</table>
+<p>The lda-model has an accuracy of about 0.7 in the validation set. The rf-model is alot more accurate, the accuracy in the validation set is 0.99. Since we did not include the validation set in the training process we expect the out-of-sample accuracy to be about the same. Therefore we will use the random forest model for the predictions in the test set. We get the following results.</p>
+<pre class="r"><code>predictions&lt;-predict(rf.model, testing)
+
+test_results&lt;-tibble(Number=names(predictions), Pred_classe=predictions)
+
+kable(test_results) %&gt;%  kable_styling(bootstrap_options = &quot;striped&quot;)</code></pre>
+<table class="table table-striped" style="margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:left;">
+Number
+</th>
+<th style="text-align:left;">
+Pred_classe
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+1
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+2
+</td>
+<td style="text-align:left;">
+A
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+3
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+4
+</td>
+<td style="text-align:left;">
+A
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+5
+</td>
+<td style="text-align:left;">
+A
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6
+</td>
+<td style="text-align:left;">
+E
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+7
+</td>
+<td style="text-align:left;">
+D
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+8
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+9
+</td>
+<td style="text-align:left;">
+A
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+10
+</td>
+<td style="text-align:left;">
+A
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+11
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+12
+</td>
+<td style="text-align:left;">
+C
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+13
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+14
+</td>
+<td style="text-align:left;">
+A
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+15
+</td>
+<td style="text-align:left;">
+E
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+16
+</td>
+<td style="text-align:left;">
+E
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+17
+</td>
+<td style="text-align:left;">
+A
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+18
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+19
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+20
+</td>
+<td style="text-align:left;">
+B
+</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.header').parent('thead').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
